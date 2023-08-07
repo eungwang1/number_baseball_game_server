@@ -7,14 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WaitingUserService } from 'src/waiting_user/waiting_user.service';
-import { BaseballSessionService } from './baseball_session.service';
+import { BaseballGameService } from './baseball_game.service';
 
 @WebSocketGateway()
 export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
   private wsServer: Server;
   constructor(
     private readonly waitingUserService: WaitingUserService,
-    private readonly baseballSessionService: BaseballSessionService,
+    private readonly baseballGameService: BaseballGameService,
   ) {}
   @SubscribeMessage('requestRandomMatch')
   async handleMessage(@ConnectedSocket() socket: Socket) {
@@ -30,11 +30,10 @@ export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (validUsers.length > 0) {
       const randomUser =
         validUsers[Math.floor(Math.random() * validUsers.length)];
-      const baseballSession =
-        await this.baseballSessionService.createBaseballSession({
-          user1: socket.id,
-          user2: randomUser.socketId,
-        });
+      const baseballGame = await this.baseballGameService.createBaseballGame({
+        user1: socket.id,
+        user2: randomUser.socketId,
+      });
       const currentUser = await this.waitingUserService.findWaitingUser({
         socketId: socket.id,
       });
@@ -44,10 +43,10 @@ export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
 
       socket
         .to(randomUser.socketId)
-        .emit('matched', { opponent: currentUser, roomId: baseballSession.id });
+        .emit('matched', { opponent: currentUser, roomId: baseballGame.id });
       socket.emit('matched', {
         opponent: randomUser,
-        roomId: baseballSession.id,
+        roomId: baseballGame.id,
       });
     } else {
       socket.emit('noUsersAvailable');
@@ -64,7 +63,7 @@ export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   private handleClearSession(socketId: string) {
     this.waitingUserService.deleteWaitingUser({ socketId: socketId });
-    this.baseballSessionService.deleteBaseballSessionBySocketId({
+    this.baseballGameService.deleteBaseballGameBySocketId({
       socketId: socketId,
     });
   }

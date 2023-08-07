@@ -3,17 +3,17 @@ import { BaseballGateway } from './baseball.gateway';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WaitingUser } from 'src/waiting_user/entities/waiting_user.entity';
 import { User } from 'src/user/entities/user.entity';
-import { BaseballSession } from './entities/baseball_session.entity';
+import { BaseballGame } from './entities/baseball_game.entity';
 import { WaitingUserService } from 'src/waiting_user/waiting_user.service';
-import { BaseballSessionService } from './baseball_session.service';
+import { BaseballGameService } from './baseball_game.service';
 import { BaseballRoomGateway } from './baseball_room.gateway';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WaitingUser, User, BaseballSession])],
+  imports: [TypeOrmModule.forFeature([WaitingUser, User, BaseballGame])],
   providers: [
     BaseballGateway,
     WaitingUserService,
-    BaseballSessionService,
+    BaseballGameService,
     BaseballRoomGateway,
   ],
 })
