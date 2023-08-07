@@ -30,10 +30,7 @@ export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
     if (validUsers.length > 0) {
       const randomUser =
         validUsers[Math.floor(Math.random() * validUsers.length)];
-      const baseballGame = await this.baseballGameService.createBaseballGame({
-        user1: socket.id,
-        user2: randomUser.socketId,
-      });
+      const baseballGame = await this.baseballGameService.createBaseballGame();
       const currentUser = await this.waitingUserService.findWaitingUser({
         socketId: socket.id,
       });
