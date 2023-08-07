@@ -9,22 +9,25 @@ import {
 @Entity()
 export class BaseballGame {
   @PrimaryGeneratedColumn('uuid')
-  id: number;
+  id: string;
 
-  @Column()
+  @Column({ default: null, nullable: true })
   user1: string;
 
-  @Column()
+  @Column({ default: null, nullable: true })
   user2: string;
 
-  @Column({ default: false })
-  user1Ready: boolean;
+  @Column({ default: null, nullable: true })
+  user1_baseball_number: string;
+
+  @Column({ default: null, nullable: true })
+  user2_baseball_number: string;
+
+  @Column({ default: null, nullable: true })
+  turn: string;
 
   @Column({ default: false })
-  user2Ready: boolean;
-
-  @Column({ default: false })
-  gameStarted: boolean;
+  game_started: boolean;
 
   @CreateDateColumn()
   created_at: Date;
