@@ -9,14 +9,36 @@ import { Server, Socket } from 'socket.io';
 import { WaitingUserService } from 'src/waiting_user/waiting_user.service';
 import { BaseballGameService } from './baseball_game.service';
 
-@WebSocketGateway()
+const BASEBALL_SUBSCRIBE_EVENTS = {
+  REQUEST_RANDOM_MATCH: 'requestRandomMatch',
+  CANCEL_RANDOM_MATCH: 'cancelRandomMatch',
+};
+
+const BASEBALL_EMIT_EVENTS = {
+  MATCHED: 'matched',
+  NO_USERS_AVAILABLE: 'noUsersAvailable',
+};
+@WebSocketGateway({
+  cors: {
+    origin:
+      process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+})
 export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
   private wsServer: Server;
   constructor(
     private readonly waitingUserService: WaitingUserService,
     private readonly baseballGameService: BaseballGameService,
   ) {}
-  @SubscribeMessage('requestRandomMatch')
+
+  @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.CANCEL_RANDOM_MATCH)
+  async handleCancelRandomMatch(@ConnectedSocket() socket: Socket) {
+    await this.waitingUserService.deleteWaitingUser({ socketId: socket.id });
+  }
+
+  @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.REQUEST_RANDOM_MATCH)
   async handleMessage(@ConnectedSocket() socket: Socket) {
     await this.waitingUserService.createWaitingUser({ socketId: socket.id });
     const waitingUsers = await this.waitingUserService.findWaitingUsersExceptMe(
@@ -38,15 +60,18 @@ export class BaseballGateway implements OnGatewayInit, OnGatewayDisconnect {
         watingUsers: [currentUser, randomUser],
       });
 
-      socket
-        .to(randomUser.socketId)
-        .emit('matched', { opponent: currentUser, roomId: baseballGame.id });
-      socket.emit('matched', {
+      socket.to(randomUser.socketId).emit(BASEBALL_EMIT_EVENTS.MATCHED, {
+        opponent: currentUser,
+        me: randomUser,
+        roomId: baseballGame.id,
+      });
+      socket.emit(BASEBALL_EMIT_EVENTS.MATCHED, {
         opponent: randomUser,
+        me: currentUser,
         roomId: baseballGame.id,
       });
     } else {
-      socket.emit('noUsersAvailable');
+      socket.emit(BASEBALL_EMIT_EVENTS.NO_USERS_AVAILABLE);
     }
   }
 
