@@ -3,14 +3,15 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Socket } from 'socket.io';
 import { BaseballGameService } from './baseball_game.service';
 import { sample } from 'lodash';
 import { EmitErrorArgs } from './baseball_game.type';
+import { BaseballGame } from './entities/baseball_game.entity';
+import { Logger } from '@nestjs/common';
 
 const BASEBALL_GAME_SUBSCRIBE_EVENTS = {
   SET_BALL_NUMBER: 'setBallNumber',
@@ -18,22 +19,23 @@ const BASEBALL_GAME_SUBSCRIBE_EVENTS = {
 };
 
 const BASEBALL_GAME_EMIT_EVENTS = {
-  START_GAME: 'startGame',
+  GAME_START: 'gameStart',
   CHANGE_TURN: 'changeTurn',
   ERROR: 'error',
   GUESS_RESULT: 'guessResult',
   GAME_END: 'gameEnd',
   OPPONENT_GUESS_RESULT: 'opponentGuessResult',
+  CONNECTED: 'connected',
 };
 
 @WebSocketGateway({
   namespace: /\/baseball\/.*/,
 })
 export class BaseballGameGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayConnection, OnGatewayDisconnect
 {
+  private readonly logger = new Logger(BaseballGameGateway.name);
   constructor(private readonly baseballGameService: BaseballGameService) {}
-
   private async getBaseballGame(socket: Socket) {
     const baseballGameId = socket.nsp.name.split('/')[2];
     const baseballGame = await this.baseballGameService.findBaseballGameById({
@@ -42,8 +44,8 @@ export class BaseballGameGateway
     if (!baseballGame) {
       this.emitError({
         destinaton: socket,
-        message: 'Invalid room',
-        statusCode: 400,
+        message: '존재하지 않는 게임입니다.',
+        statusCode: 404,
       });
 
       return null;
@@ -56,240 +58,302 @@ export class BaseballGameGateway
     destinaton.emit(BASEBALL_GAME_EMIT_EVENTS.ERROR, { message, statusCode });
   }
 
-  private emitOpponentDisconnect(socket: Socket, baseballGame) {
+  private emitOpponentDisconnect(socket: Socket, baseballGame: BaseballGame) {
     const isUser1 = baseballGame.user1 === socket.id;
     const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
     this.emitError({
       destinaton: socket.to(opponentSocketId),
-      message: 'Opponent disconnected',
-      statusCode: 410,
+      message: '상대방이 나갔습니다.',
+      statusCode: 404,
     });
   }
 
-  private async isValidBaseballNumber(
-    baseballNumber: string,
-  ): Promise<{ ok: boolean; message?: string }> {
+  private isValidBaseballNumber(baseballNumber: string): {
+    ok: boolean;
+    message?: string;
+  } {
     if (baseballNumber.length !== 4)
       return {
         ok: false,
-        message: 'Number length must be 4',
+        message: '4자리 숫자를 입력해야 합니다.',
       };
     const baseballNumberArray = baseballNumber.split('');
     const isNumber = baseballNumberArray.every((n) => !isNaN(parseInt(n)));
     if (!isNumber)
       return {
         ok: false,
-        message: 'Number must be number',
+        message: '숫자만 입력해야 합니다.',
       };
     const isUnique = new Set(baseballNumberArray).size === 4;
     if (!isUnique)
       return {
         ok: false,
-        message: 'Number must be unique',
+        message: '숫자는 중복되지 않아야 합니다.',
       };
     return {
       ok: true,
     };
   }
 
-  afterInit(server: Server) {
-    console.log('BaseballGameGateway Init');
-  }
-
   async handleConnection(socket: Socket) {
-    const baseballGame = await this.getBaseballGame(socket);
-    if (!baseballGame) return;
+    try {
+      this.logger.log('baseball game connection');
+      const socketIds = Array.from(socket.nsp.sockets.keys());
 
-    if (!baseballGame.user1) {
-      this.baseballGameService.updateBaseballGame({
-        id: baseballGame.id,
-        user1: socket.id,
-      });
-    } else if (!baseballGame.user2) {
-      this.baseballGameService.updateBaseballGame({
-        id: baseballGame.id,
-        user2: socket.id,
-      });
-    } else {
+      if (socketIds.length === 2) {
+        const baseballGame = await this.getBaseballGame(socket);
+        if (!baseballGame) {
+          this.emitError({
+            destinaton: socket,
+            message: '존재하지 않는 게임입니다.',
+            statusCode: 404,
+          });
+        }
+        this.baseballGameService.updateBaseballGame({
+          id: baseballGame.id,
+          user1: socketIds[0],
+          user2: socketIds[1],
+        });
+      }
+      if (socketIds.length > 2) {
+        this.emitError({
+          destinaton: socket,
+          message: '인원이 초과되었습니다.',
+          statusCode: 403,
+        });
+      }
+      socket.emit(BASEBALL_GAME_EMIT_EVENTS.CONNECTED);
+    } catch (e) {
+      this.logger.error(e);
       this.emitError({
         destinaton: socket,
-        message: 'Room is full',
-        statusCode: 403,
+        message: '알 수 없는 에러가 발생했습니다.',
+        statusCode: 500,
       });
-      socket.disconnect();
     }
   }
 
   async handleDisconnect(socket: Socket) {
-    const baseballGame = await this.getBaseballGame(socket);
-    if (!baseballGame) return;
-    this.baseballGameService.deleteBaseballGameBySocketId({
-      socketId: socket.id,
-    });
-    this.emitOpponentDisconnect(socket, baseballGame);
+    try {
+      this.logger.log('baseball game disconnect');
+      const baseballGame = await this.getBaseballGame(socket);
+      if (!baseballGame) return;
+      this.baseballGameService.deleteBaseballGameBySocketId({
+        socketId: socket.id,
+      });
+      this.emitOpponentDisconnect(socket, baseballGame);
+    } catch (e) {
+      this.logger.error(e);
+      this.emitError({
+        destinaton: socket,
+        message: '알 수 없는 에러가 발생했습니다.',
+        statusCode: 500,
+      });
+    }
   }
 
   @SubscribeMessage(BASEBALL_GAME_SUBSCRIBE_EVENTS.SET_BALL_NUMBER)
   async handleSetBallNumber(
-    @MessageBody() baseballNumber: string,
+    @MessageBody() body: { baseballNumber: string },
     @ConnectedSocket() socket: Socket,
   ) {
-    const isValid = await this.isValidBaseballNumber(baseballNumber);
-    if (!isValid.ok) {
-      this.emitError({
-        destinaton: socket,
-        message: isValid.message,
-        statusCode: 400,
-      });
-      return;
-    }
-    let baseballGame = await this.getBaseballGame(socket);
-    if (!baseballGame) return;
-    const isUser1 = baseballGame.user1 === socket.id;
-    const isUser2 = baseballGame.user2 === socket.id;
-    const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
-    const mySocketId = isUser1 ? baseballGame.user1 : baseballGame.user2;
+    try {
+      if (!body.baseballNumber) {
+        this.emitError({
+          destinaton: socket,
+          message: '숫자는 필수입니다.',
+          statusCode: 400,
+        });
+        return;
+      }
+      const { baseballNumber } = body;
+      const isValid = this.isValidBaseballNumber(baseballNumber);
+      if (!isValid.ok) {
+        this.emitError({
+          destinaton: socket,
+          message: isValid.message,
+          statusCode: 400,
+        });
+        return;
+      }
+      let baseballGame = await this.getBaseballGame(socket);
+      if (!baseballGame) return;
+      const isUser1 = baseballGame.user1 === socket.id;
+      const isUser2 = baseballGame.user2 === socket.id;
+      const opponentSocketId = isUser1
+        ? baseballGame.user2
+        : baseballGame.user1;
+      const mySocketId = isUser1 ? baseballGame.user1 : baseballGame.user2;
+      if (!isUser1 && !isUser2) {
+        this.emitError({
+          destinaton: socket,
+          message: '게임에 참여중인 유저가 아닙니다.',
+          statusCode: 404,
+        });
+        return;
+      }
+      if (isUser1 && baseballGame.user1_baseball_number) {
+        this.emitError({
+          destinaton: socket,
+          message: '이미 숫자를 등록하셨습니다.',
+          statusCode: 400,
+        });
 
-    if (!isUser1 && !isUser2) {
-      this.emitError({
-        destinaton: socket,
-        message: 'User not found in room',
-        statusCode: 404,
-      });
-
-      return;
-    }
-    if (baseballGame.game_started) {
-      this.emitError({
-        destinaton: socket,
-        message: 'Game already started',
-        statusCode: 409,
-      });
-
-      return;
-    }
-    if (isUser1 && baseballGame.user1_baseball_number) {
-      this.emitError({
-        destinaton: socket,
-        message: 'Already set your number',
-        statusCode: 409,
-      });
-
-      return;
-    }
-    if (isUser2 && baseballGame.user2_baseball_number) {
-      this.emitError({
-        destinaton: socket,
-        message: 'Already set your number',
-        statusCode: 409,
-      });
-      return;
-    }
-    baseballGame = await this.baseballGameService.updateBaseballGame({
-      id: baseballGame.id,
-      [isUser1 ? 'user1_baseball_number' : 'user2_baseball_number']:
-        baseballNumber,
-    });
-    const myBaseballNumber = isUser1
-      ? baseballGame.user1_baseball_number
-      : baseballGame.user2_baseball_number;
-    const opponentBaseballNumber = isUser1
-      ? baseballGame.user2_baseball_number
-      : baseballGame.user1_baseball_number;
-    if (
-      baseballGame.user1_baseball_number &&
-      baseballGame.user2_baseball_number
-    ) {
-      const randomTurn = sample([baseballGame.user1, baseballGame.user2]);
-
-      await this.baseballGameService.updateBaseballGame({
+        return;
+      }
+      if (isUser2 && baseballGame.user2_baseball_number) {
+        this.emitError({
+          destinaton: socket,
+          message: '이미 숫자를 등록하셨습니다.',
+          statusCode: 400,
+        });
+        return;
+      }
+      baseballGame = await this.baseballGameService.updateBaseballGame({
         id: baseballGame.id,
-        turn: randomTurn,
-        game_started: true,
+        [isUser1 ? 'user1_baseball_number' : 'user2_baseball_number']:
+          baseballNumber,
       });
-      socket.emit(BASEBALL_GAME_EMIT_EVENTS.START_GAME, {
-        myNumber: myBaseballNumber,
-        mySocketId: mySocketId,
+      const myBaseballNumber = isUser1
+        ? baseballGame.user1_baseball_number
+        : baseballGame.user2_baseball_number;
+      const opponentBaseballNumber = isUser1
+        ? baseballGame.user2_baseball_number
+        : baseballGame.user1_baseball_number;
+      if (
+        baseballGame.user1_baseball_number &&
+        baseballGame.user2_baseball_number
+      ) {
+        const randomTurn = sample([baseballGame.user1, baseballGame.user2]);
+
+        await this.baseballGameService.updateBaseballGame({
+          id: baseballGame.id,
+          turn: randomTurn,
+          game_started: true,
+        });
+        socket.emit(BASEBALL_GAME_EMIT_EVENTS.GAME_START, {
+          myNumber: myBaseballNumber,
+          mySocketId: mySocketId,
+        });
+        socket.to(opponentSocketId).emit(BASEBALL_GAME_EMIT_EVENTS.GAME_START, {
+          myNumber: opponentBaseballNumber,
+          mySocketId: opponentSocketId,
+        });
+        socket.emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, {
+          turn: randomTurn,
+        });
+        socket
+          .to(opponentSocketId)
+          .emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn: randomTurn });
+      }
+    } catch (e) {
+      this.logger.error(e);
+      this.emitError({
+        destinaton: socket,
+        message: '알 수 없는 에러가 발생했습니다.',
+        statusCode: 500,
       });
-      socket.to(opponentSocketId).emit(BASEBALL_GAME_EMIT_EVENTS.START_GAME, {
-        myNumber: opponentBaseballNumber,
-        mySocketId: opponentSocketId,
-      });
-      socket.emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn: randomTurn });
-      socket
-        .to(opponentSocketId)
-        .emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn: randomTurn });
     }
   }
 
   @SubscribeMessage(BASEBALL_GAME_SUBSCRIBE_EVENTS.GUESS_BALL_NUMBER)
   async handleGuessBallNumber(
-    @MessageBody() number: number,
+    @MessageBody() body: { baseballNumber: number },
     @ConnectedSocket() socket: Socket,
   ) {
-    const baseballGame = await this.getBaseballGame(socket);
-    if (!baseballGame) return;
-    const isUser1 = baseballGame.user1 === socket.id;
-    const isUser2 = baseballGame.user2 === socket.id;
-    if (!isUser1 && !isUser2) {
-      this.emitError({
-        destinaton: socket,
-        message: 'User not found in room',
-        statusCode: 404,
+    try {
+      const { baseballNumber } = body;
+      const isValid = this.isValidBaseballNumber(baseballNumber.toString());
+      if (!isValid.ok) {
+        this.emitError({
+          destinaton: socket,
+          message: isValid.message,
+          statusCode: 400,
+        });
+        return;
+      }
+      const baseballGame = await this.getBaseballGame(socket);
+      if (!baseballGame) return;
+      const isUser1 = baseballGame.user1 === socket.id;
+      const isUser2 = baseballGame.user2 === socket.id;
+      if (!isUser1 && !isUser2) {
+        this.emitError({
+          destinaton: socket,
+          message: '게임에 참여중인 유저가 아닙니다.',
+          statusCode: 404,
+        });
+        return;
+      }
+      if (!baseballGame.game_started) {
+        this.emitError({
+          destinaton: socket,
+          message: '게임이 아직 시작되지 않았습니다.',
+          statusCode: 400,
+        });
+        return;
+      }
+      if (baseballGame.turn !== socket.id) {
+        this.emitError({
+          destinaton: socket,
+          message: '당신의 차례가 아닙니다.',
+          statusCode: 400,
+        });
+        return;
+      }
+      const opponentNumber = isUser1
+        ? baseballGame.user2_baseball_number
+        : baseballGame.user1_baseball_number;
+      const opponentSocketId = isUser1
+        ? baseballGame.user2
+        : baseballGame.user1;
+
+      const opponentNumberArray = opponentNumber
+        .toString()
+        .split('')
+        .map((n) => parseInt(n));
+      const numberArray = baseballNumber
+        .toString()
+        .split('')
+        .map((n) => parseInt(n));
+      const strike = numberArray.filter(
+        (n, i) => n === opponentNumberArray[i],
+      ).length;
+      const ball =
+        numberArray.filter((n) => opponentNumberArray.includes(n)).length -
+        strike;
+      socket.emit(BASEBALL_GAME_EMIT_EVENTS.GUESS_RESULT, {
+        strike,
+        ball,
+        baseballNumber,
       });
-      return;
-    }
-    if (!baseballGame.game_started) {
-      this.emitError({
-        destinaton: socket,
-        message: 'Game not started',
-        statusCode: 409,
-      });
-      return;
-    }
-    if (baseballGame.turn !== socket.id) {
-      this.emitError({
-        destinaton: socket,
-        message: 'Not your turn',
-        statusCode: 403,
-      });
-      return;
-    }
-    const opponentNumber = isUser1
-      ? baseballGame.user2_baseball_number
-      : baseballGame.user1_baseball_number;
-    const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
-    const opponentNumberArray = opponentNumber
-      .toString()
-      .split('')
-      .map((n) => parseInt(n));
-    const numberArray = number
-      .toString()
-      .split('')
-      .map((n) => parseInt(n));
-    const strike = numberArray.filter(
-      (n, i) => n === opponentNumberArray[i],
-    ).length;
-    const ball =
-      numberArray.filter((n) => opponentNumberArray.includes(n)).length -
-      strike;
-    socket.emit(BASEBALL_GAME_EMIT_EVENTS.GUESS_RESULT, { strike, ball });
-    socket
-      .to(opponentSocketId)
-      .emit(BASEBALL_GAME_EMIT_EVENTS.OPPONENT_GUESS_RESULT, { strike, ball });
-    if (strike === 4) {
-      socket.emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: true });
       socket
         .to(opponentSocketId)
-        .emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: false });
-    } else {
-      const turn = isUser1 ? baseballGame.user2 : baseballGame.user1;
-      await this.baseballGameService.updateBaseballGame({
-        id: baseballGame.id,
-        turn,
+        .emit(BASEBALL_GAME_EMIT_EVENTS.OPPONENT_GUESS_RESULT, {
+          strike,
+          ball,
+          baseballNumber,
+        });
+      if (strike === 4) {
+        socket.emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: true });
+        socket
+          .to(opponentSocketId)
+          .emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: false });
+      } else {
+        const turn = isUser1 ? baseballGame.user2 : baseballGame.user1;
+        await this.baseballGameService.updateBaseballGame({
+          id: baseballGame.id,
+          turn,
+        });
+        socket.emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
+        socket.to(turn).emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
+      }
+    } catch (e) {
+      this.logger.error(e);
+      this.emitError({
+        destinaton: socket,
+        message: '알 수 없는 에러가 발생했습니다.',
+        statusCode: 500,
       });
-      socket.emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
-      socket.to(turn).emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
     }
   }
 }
