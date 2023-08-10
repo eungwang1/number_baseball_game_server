@@ -1,6 +1,11 @@
-import { IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class FindWaitingUserInput {
   @IsString()
-  socketId: string;
+  @IsOptional()
+  socketId?: string;
+
+  @IsString()
+  @IsOptional()
+  matchId?: string;
 }

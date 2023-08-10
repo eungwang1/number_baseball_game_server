@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeleteResult, Not, Repository } from 'typeorm';
+import { DeleteResult, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { WaitingUser } from './entities/waiting_user.entity';
 import { FindWaitingUserInput } from './dtos/findWaitingUser.dto';
 import { FindWaitingUsersExceptMeInput } from './dtos/findWaitingUsersExceptMe';
 import { RemoveWaitingUsersInput } from './dtos/removeWaitingUsers.dto';
 import { CreateWaitingUserInput } from './dtos/createWaitingUser.dto';
 import { DeleteWaitingUserInput } from './dtos/deleteWaitingUser.dto';
+import { UpdateWaitingUserInput } from './dtos/updateWaitingUser.dto';
+import { FindWaitingUserByMatchIdExceptMeInput } from './dtos/findWaitingUserExceptMe.dto';
 
 @Injectable()
 export class WaitingUserService {
@@ -32,8 +34,21 @@ export class WaitingUserService {
   async findWaitingUser(
     findWaitingUserInput: FindWaitingUserInput,
   ): Promise<WaitingUser> {
+    const { socketId, matchId } = findWaitingUserInput;
+    const where: FindOptionsWhere<WaitingUser> = {};
+    if (socketId) where.socketId = socketId;
+    if (matchId) where.matchId = matchId;
     return await this.waitingUsers.findOne({
-      where: { socketId: findWaitingUserInput.socketId },
+      where,
+    });
+  }
+
+  async findWaitingUserByMatchIdExceptMe(
+    findWaitingUserByMatchIdExceptMeInput: FindWaitingUserByMatchIdExceptMeInput,
+  ): Promise<WaitingUser> {
+    const { matchId, mySocketId } = findWaitingUserByMatchIdExceptMeInput;
+    return await this.waitingUsers.findOne({
+      where: { socketId: Not(mySocketId), matchId },
     });
   }
 
@@ -43,6 +58,21 @@ export class WaitingUserService {
     return await this.waitingUsers.find({
       where: { socketId: Not(findWaitingUsersExceptMeInput.mySocketId) },
     });
+  }
+
+  async updateWaitingUser(
+    updateWaitingUserInput: UpdateWaitingUserInput,
+  ): Promise<WaitingUser> {
+    const { socketId, matchId, isMatchApproved } = updateWaitingUserInput;
+    const waitingUser = await this.waitingUsers.findOne({
+      where: {
+        socketId,
+      },
+    });
+    if (!waitingUser) throw new Error('WaitingUser not found');
+    if (matchId) waitingUser.matchId = matchId;
+    if (isMatchApproved) waitingUser.isMatchApproved = isMatchApproved;
+    return await this.waitingUsers.save(waitingUser);
   }
 
   async deleteWaitingUser(

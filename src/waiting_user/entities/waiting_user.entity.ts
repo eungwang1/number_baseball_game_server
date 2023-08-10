@@ -5,4 +5,10 @@ import { Column, Entity } from 'typeorm';
 export class WaitingUser extends CoreEntity {
   @Column({ unique: true })
   socketId: string;
+
+  @Column({ default: null, nullable: true })
+  matchId: string;
+
+  @Column({ default: false })
+  isMatchApproved: boolean;
 }
