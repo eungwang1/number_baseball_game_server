@@ -69,7 +69,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           source: '.env.prod'
-          target: '/home/ubuntu/eden'
+          target: '/home/ubuntu/baseball'
 
       - name: Restart PM2
         uses: appleboy/ssh-action@master
