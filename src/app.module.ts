@@ -13,7 +13,6 @@ import { BaseballModule } from './baseball/baseball.module';
       envFilePath:
         process.env.NODE_ENV === 'production' ? '.env.prod' : '.env.dev',
       validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'production').required(),
         DB_HOST: Joi.string().required(),
         DB_PORT: Joi.string().required(),
         DB_USERNAME: Joi.string().required(),
