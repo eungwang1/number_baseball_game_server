@@ -35,6 +35,7 @@ jobs:
           echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env.prod
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env.prod
           echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env.prod
+          echo "FRONTEND_URL=${{ secrets.DB_DATABASE }}" >> .env.prod
 
       - name: Install Dependencies
         run: yarn
