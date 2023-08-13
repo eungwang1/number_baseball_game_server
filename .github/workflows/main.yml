@@ -1,0 +1,81 @@
+name: Deploy to AWS Lightsail
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+jobs:
+  if_merged:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: Generate Environment Variables File for Production
+        run: |
+          echo "PORT=${{ secrets.PORT }}" >> .env.prod
+          echo "DB_HOST=${{ secrets.DB_HOST }}" >> .env.prod
+          echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env.prod
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env.prod
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env.prod
+          echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env.prod
+
+      - name: Install Dependencies
+        run: yarn
+
+      - name: Build for Production
+        run: yarn build
+
+      - name: Deploy build to AWS Lightsail
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: 'dist/*'
+          strip_components: 1
+          target: '/home/ubuntu/baseball/dist'
+
+      - name: Deploy node_modules to AWS Lightsail
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: 'node_modules/*'
+          strip_components: 1
+          target: '/home/ubuntu/baseball/node_modules'
+
+      - name: Deploy .env file to AWS Lightsail
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: '.env.prod'
+          target: '/home/ubuntu/eden'
+
+      - name: Restart PM2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            yarn cross-env NODE_ENV=prod pm2 start ecosystem.config.js
