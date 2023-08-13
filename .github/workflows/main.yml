@@ -71,6 +71,24 @@ jobs:
           source: '.env.prod'
           target: '/home/ubuntu/baseball'
 
+      - name: Copy pm2 config
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{env.SSH_USERNAME}}
+          key: ${{ secrets.SSH_SSH_KEY }}
+          source: 'ecosystem.config.js'
+          target: '/home/ubuntu/baseball'
+
+      - name: Copy package.json
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{env.SSH_USERNAME}}
+          key: ${{ secrets.SSH_SSH_KEY }}
+          source: 'package.json'
+          target: '/home/ubuntu/baseball'
+
       - name: Restart PM2
         uses: appleboy/ssh-action@master
         with:
