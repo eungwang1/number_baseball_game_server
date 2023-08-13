@@ -20,6 +20,7 @@ const BASEBALL_SUBSCRIBE_EVENTS = {
 const BASEBALL_EMIT_EVENTS = {
   MATCHED: 'matched',
   MATCH_APPROVED: 'matchApproved',
+  MATCH_CANCELED: 'matchCancelled',
   NO_USERS_AVAILABLE: 'noUsersAvailable',
   ERROR: 'error',
 };
@@ -51,7 +52,36 @@ export class BaseballGateway implements OnGatewayDisconnect {
   async handleCancelRandomMatch(@ConnectedSocket() socket: Socket) {
     try {
       this.logger.log('cancelRandomMatch');
-      await this.waitingUserService.deleteWaitingUser({ socketId: socket.id });
+      const waitingUser = await this.waitingUserService.findWaitingUser({
+        socketId: socket.id,
+      });
+      if (!waitingUser) {
+        this.emitError({
+          destinaton: socket,
+          message: 'You are not waiting for a match',
+          statusCode: 400,
+        });
+        return;
+      }
+      const { matchId } = waitingUser;
+      const matchingUsers = await this.waitingUserService.findWatingUsers({
+        matchId,
+      });
+      if (matchingUsers.length !== 2) {
+        await this.waitingUserService.removeWaitingUsers({
+          watingUsers: matchingUsers,
+        });
+        return;
+      }
+      const matchingUser = matchingUsers.find(
+        (user) => user.socketId !== socket.id,
+      );
+      socket
+        .to(matchingUser.socketId)
+        .emit(BASEBALL_EMIT_EVENTS.MATCH_CANCELED);
+      await this.waitingUserService.removeWaitingUsers({
+        watingUsers: matchingUsers,
+      });
     } catch (e) {
       this.logger.error(e);
       this.emitError({

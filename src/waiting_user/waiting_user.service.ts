@@ -9,6 +9,7 @@ import { CreateWaitingUserInput } from './dtos/createWaitingUser.dto';
 import { DeleteWaitingUserInput } from './dtos/deleteWaitingUser.dto';
 import { UpdateWaitingUserInput } from './dtos/updateWaitingUser.dto';
 import { FindWaitingUserByMatchIdExceptMeInput } from './dtos/findWaitingUserExceptMe.dto';
+import { FindWatingUsersInput } from './dtos/findWatingUsers.dto';
 
 @Injectable()
 export class WaitingUserService {
@@ -39,6 +40,17 @@ export class WaitingUserService {
     if (socketId) where.socketId = socketId;
     if (matchId) where.matchId = matchId;
     return await this.waitingUsers.findOne({
+      where,
+    });
+  }
+
+  async findWatingUsers(
+    findWatingUsersInput: FindWatingUsersInput,
+  ): Promise<WaitingUser[]> {
+    const { matchId } = findWatingUsersInput;
+    const where: FindOptionsWhere<WaitingUser> = {};
+    if (matchId) where.matchId = matchId;
+    return await this.waitingUsers.find({
       where,
     });
   }

@@ -21,6 +21,7 @@ const BASEBALL_GAME_SUBSCRIBE_EVENTS = {
 const BASEBALL_GAME_EMIT_EVENTS = {
   GAME_START: 'gameStart',
   CHANGE_TURN: 'changeTurn',
+  MY_BALL_REGISTERED: 'myBallRegistered',
   ERROR: 'error',
   GUESS_RESULT: 'guessResult',
   GAME_END: 'gameEnd',
@@ -44,7 +45,7 @@ export class BaseballGameGateway
     if (!baseballGame) {
       this.emitError({
         destinaton: socket,
-        message: '존재하지 않는 게임입니다.',
+        message: '존재하지 않는 게임입니다.\n잠시 후 대기실로 이동합니다.',
         statusCode: 404,
       });
 
@@ -63,7 +64,7 @@ export class BaseballGameGateway
     const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
     this.emitError({
       destinaton: socket.to(opponentSocketId),
-      message: '상대방이 나갔습니다.',
+      message: '상대방이 나갔습니다.\n잠시 후 대기실로 이동합니다.',
       statusCode: 404,
     });
   }
@@ -105,7 +106,7 @@ export class BaseballGameGateway
         if (!baseballGame) {
           this.emitError({
             destinaton: socket,
-            message: '존재하지 않는 게임입니다.',
+            message: '존재하지 않는 게임입니다.\n잠시 후 대기실로 이동합니다.',
             statusCode: 404,
           });
         }
@@ -118,7 +119,7 @@ export class BaseballGameGateway
       if (socketIds.length > 2) {
         this.emitError({
           destinaton: socket,
-          message: '인원이 초과되었습니다.',
+          message: '인원이 초과되었습니다.\n잠시 후 대기실로 이동합니다.',
           statusCode: 403,
         });
       }
@@ -169,11 +170,6 @@ export class BaseballGameGateway
       const { baseballNumber } = body;
       const isValid = this.isValidBaseballNumber(baseballNumber);
       if (!isValid.ok) {
-        this.emitError({
-          destinaton: socket,
-          message: isValid.message,
-          statusCode: 400,
-        });
         return;
       }
       let baseballGame = await this.getBaseballGame(socket);
@@ -187,7 +183,8 @@ export class BaseballGameGateway
       if (!isUser1 && !isUser2) {
         this.emitError({
           destinaton: socket,
-          message: '게임에 참여중인 유저가 아닙니다.',
+          message:
+            '게임에 참여중인 유저가 아닙니다.\n잠시 후 대기실로 이동합니다.',
           statusCode: 404,
         });
         return;
@@ -245,6 +242,8 @@ export class BaseballGameGateway
         socket
           .to(opponentSocketId)
           .emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn: randomTurn });
+      } else {
+        socket.emit(BASEBALL_GAME_EMIT_EVENTS.MY_BALL_REGISTERED);
       }
     } catch (e) {
       this.logger.error(e);
@@ -279,7 +278,8 @@ export class BaseballGameGateway
       if (!isUser1 && !isUser2) {
         this.emitError({
           destinaton: socket,
-          message: '게임에 참여중인 유저가 아닙니다.',
+          message:
+            '게임에 참여중인 유저가 아닙니다.\n잠시 후 대기실로 이동합니다.',
           statusCode: 404,
         });
         return;
