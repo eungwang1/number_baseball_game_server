@@ -3,7 +3,7 @@ module.exports = {
     {
       script: './dist/main.js',
       exec_mode: 'cluster',
-      instances: 0,
+      instances: 1,
       env_development: {
         name: 'development-numberbaseball-api',
         NODE_ENV: 'dev',
