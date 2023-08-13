@@ -10,6 +10,7 @@ import { BaseballGameService } from './baseball_game.service';
 import { EmitErrorArgs } from './baseball_game.type';
 import { Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import envSetup from '../config/env';
 
 const BASEBALL_SUBSCRIBE_EVENTS = {
   REQUEST_RANDOM_MATCH: 'requestRandomMatch',
@@ -26,8 +27,7 @@ const BASEBALL_EMIT_EVENTS = {
 };
 @WebSocketGateway({
   cors: {
-    origin:
-      process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : '*',
+    origin: envSetup().FRONTEND_URL,
     methods: ['GET', 'POST'],
     credentials: true,
   },
