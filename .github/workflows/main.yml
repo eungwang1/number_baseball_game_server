@@ -98,4 +98,4 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /home/ubuntu/baseball 
-            yarn cross-env NODE_ENV=production pm2 start ecosystem.config.js
+            sudo yarn cross-env NODE_ENV=production pm2 start ecosystem.config.js
