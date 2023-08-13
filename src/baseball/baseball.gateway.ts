@@ -25,6 +25,8 @@ const BASEBALL_EMIT_EVENTS = {
   NO_USERS_AVAILABLE: 'noUsersAvailable',
   ERROR: 'error',
 };
+
+console.log(envSetup().FRONTEND_URL);
 @WebSocketGateway({
   cors: {
     origin: envSetup().FRONTEND_URL,
