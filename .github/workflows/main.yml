@@ -76,7 +76,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{env.SSH_USERNAME}}
-          key: ${{ secrets.SSH_SSH_KEY }}
+          key: ${{ secrets.SSH_KEY }}
           source: 'ecosystem.config.js'
           target: '/home/ubuntu/baseball'
 
@@ -85,7 +85,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{env.SSH_USERNAME}}
-          key: ${{ secrets.SSH_SSH_KEY }}
+          key: ${{ secrets.SSH_KEY }}
           source: 'package.json'
           target: '/home/ubuntu/baseball'
 
