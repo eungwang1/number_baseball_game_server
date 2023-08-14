@@ -65,13 +65,21 @@ export class BaseballGameGateway
     });
   }
 
-  private emitOpponentDisconnect(socket: Socket, baseballGame: BaseballGame) {
+  private async emitOpponentDisconnect(
+    socket: Socket,
+    baseballGame: BaseballGame,
+  ) {
     const isUser1 = baseballGame.user1 === socket.id;
     const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
+    await this.baseballGameService.updateBaseballGame({
+      id: baseballGame.id,
+      game_finished: true,
+      [`user${isUser1 ? 1 : 2}_win`]: true,
+    });
     this.emitError({
       destinaton: socket.to(opponentSocketId),
       message: '상대방이 나갔습니다.\n부전승 처리됩니다.',
-      redirectPath: `/baseball/${baseballGame.id}/win`,
+      redirectPath: `/baseball/${baseballGame.id}/result?result=win`,
       statusCode: 404,
     });
   }
@@ -332,32 +340,23 @@ export class BaseballGameGateway
       const ball =
         numberArray.filter((n) => opponentNumberArray.includes(n)).length -
         strike;
-      socket.emit(BASEBALL_GAME_EMIT_EVENTS.GUESS_RESULT, {
+
+      const guessResult = {
         strike,
         ball,
-        baseballNumber,
-      });
+        baseball_number: baseballNumber,
+      };
+      socket.emit(BASEBALL_GAME_EMIT_EVENTS.GUESS_RESULT, guessResult);
       socket
         .to(opponentSocketId)
-        .emit(BASEBALL_GAME_EMIT_EVENTS.OPPONENT_GUESS_RESULT, {
-          strike,
-          ball,
-          baseballNumber,
-        });
+        .emit(BASEBALL_GAME_EMIT_EVENTS.OPPONENT_GUESS_RESULT, guessResult);
       const currentHistory = isUser1
         ? 'user1_baseball_number_history'
         : 'user2_baseball_number_history';
 
       const updateBaseballGameInput: UpdateBaseballGameInput = {
         id: baseballGame.id,
-        [currentHistory]: [
-          {
-            baseball_number: baseballNumber,
-            strike,
-            ball,
-          },
-          ...baseballGame[currentHistory],
-        ],
+        [currentHistory]: [guessResult, ...baseballGame[currentHistory]],
       };
       if (strike === 4) {
         socket.emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: true });
