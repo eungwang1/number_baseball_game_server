@@ -11,4 +11,7 @@ export class WaitingUser extends CoreEntity {
 
   @Column({ default: false })
   isMatchApproved: boolean;
+
+  @Column({ default: 0 })
+  turnTimeLimit: number;
 }
