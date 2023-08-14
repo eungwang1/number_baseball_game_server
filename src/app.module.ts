@@ -5,6 +5,7 @@ import * as Joi from 'joi';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BaseballModule } from './baseball/baseball.module';
+import { SecretCodeModule } from './secret_code/secret_code.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { BaseballModule } from './baseball/baseball.module';
       }),
     }),
     BaseballModule,
+    SecretCodeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
