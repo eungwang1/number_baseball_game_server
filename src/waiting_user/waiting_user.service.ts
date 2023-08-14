@@ -35,10 +35,11 @@ export class WaitingUserService {
   async findWaitingUser(
     findWaitingUserInput: FindWaitingUserInput,
   ): Promise<WaitingUser> {
-    const { socketId, matchId } = findWaitingUserInput;
+    const { socketId, matchId, secretCode } = findWaitingUserInput;
     const where: FindOptionsWhere<WaitingUser> = {};
     if (socketId) where.socketId = socketId;
     if (matchId) where.matchId = matchId;
+    if (secretCode) where.secretCode = secretCode;
     return await this.waitingUsers.findOne({
       where,
     });
