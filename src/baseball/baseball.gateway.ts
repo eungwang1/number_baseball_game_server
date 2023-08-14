@@ -1,5 +1,6 @@
 import {
   ConnectedSocket,
+  MessageBody,
   OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
@@ -41,6 +42,11 @@ export class BaseballGateway implements OnGatewayDisconnect {
     private readonly baseballGameService: BaseballGameService,
   ) {}
 
+  private getRandomNumberFromList(numbers: number[]): number {
+    const randomIndex = Math.floor(Math.random() * numbers.length);
+    return numbers[randomIndex];
+  }
+
   private emitError(args: EmitErrorArgs) {
     const { destinaton, message, statusCode } = args;
     destinaton.emit(BASEBALL_EMIT_EVENTS.ERROR, { message, statusCode });
@@ -66,6 +72,12 @@ export class BaseballGateway implements OnGatewayDisconnect {
         return;
       }
       const { matchId } = waitingUser;
+      if (!matchId) {
+        await this.waitingUserService.deleteWaitingUser({
+          socketId: socket.id,
+        });
+        return;
+      }
       const matchingUsers = await this.waitingUserService.findWatingUsers({
         matchId,
       });
@@ -110,13 +122,19 @@ export class BaseballGateway implements OnGatewayDisconnect {
       if (matchingUser.isMatchApproved) {
         const baseballGame =
           await this.baseballGameService.createBaseballGame();
+        const turnTimeLimit =
+          waitingUser.turnTimeLimit ||
+          matchingUser.turnTimeLimit ||
+          this.getRandomNumberFromList([30, 60, 120]);
         socket
           .to(matchingUser.socketId)
           .emit(BASEBALL_EMIT_EVENTS.MATCH_APPROVED, {
             roomId: baseballGame.id,
+            turnTimeLimit,
           });
         socket.emit(BASEBALL_EMIT_EVENTS.MATCH_APPROVED, {
           roomId: baseballGame.id,
+          turnTimeLimit,
         });
       }
       if (!matchingUser.isMatchApproved) {
@@ -136,17 +154,28 @@ export class BaseballGateway implements OnGatewayDisconnect {
   }
 
   @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.REQUEST_RANDOM_MATCH)
-  async handleMessage(@ConnectedSocket() socket: Socket) {
+  async handleMessage(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { turnTimeLimit: number },
+  ) {
     try {
       this.logger.log('requestRandomMatch');
-      await this.waitingUserService.createWaitingUser({ socketId: socket.id });
+      await this.waitingUserService.createWaitingUser({
+        socketId: socket.id,
+        turnTimeLimit: data.turnTimeLimit || 0,
+      });
       const waitingUsers =
         await this.waitingUserService.findWaitingUsersExceptMe({
           mySocketId: socket.id,
         });
-      const validUsers = waitingUsers.filter((user) => {
-        return socket.nsp.sockets.get(user.socketId);
-      });
+
+      const validUsers = waitingUsers.filter(
+        (user) =>
+          (user.turnTimeLimit === data.turnTimeLimit ||
+            !data.turnTimeLimit ||
+            !user.turnTimeLimit) &&
+          socket.nsp.sockets.get(user.socketId),
+      );
       if (validUsers.length > 0) {
         const matchId = uuidv4();
 
