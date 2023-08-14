@@ -7,6 +7,7 @@ import { BaseballGame } from './entities/baseball_game.entity';
 import { WaitingUserService } from 'src/waiting_user/waiting_user.service';
 import { BaseballGameGateway } from './baseball_game.gateway';
 import { BaseballGameService } from './baseball_game.service';
+import { BaseballGameController } from './baseball_game.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([WaitingUser, User, BaseballGame])],
@@ -16,5 +17,6 @@ import { BaseballGameService } from './baseball_game.service';
     BaseballGameService,
     BaseballGameGateway,
   ],
+  controllers: [BaseballGameController],
 })
 export class BaseballModule {}

@@ -107,8 +107,6 @@ export class BaseballGateway implements OnGatewayDisconnect {
           mySocketId: socket.id,
           matchId: waitingUser.matchId,
         });
-      console.log(matchingUser);
-      console.log(matchingUser.isMatchApproved);
       if (matchingUser.isMatchApproved) {
         const baseballGame =
           await this.baseballGameService.createBaseballGame();

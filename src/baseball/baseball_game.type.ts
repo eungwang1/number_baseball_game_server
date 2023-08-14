@@ -13,4 +13,5 @@ export interface EmitErrorArgs {
       >;
   message: string;
   statusCode: number;
+  redirectPath?: string;
 }
