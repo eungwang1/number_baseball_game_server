@@ -12,9 +12,12 @@ import { EmitErrorArgs } from './baseball_game.type';
 import { Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import envSetup from '../config/env';
+import { SecretCodeService } from 'src/secret_code/secret_code.service';
 
 const BASEBALL_SUBSCRIBE_EVENTS = {
   REQUEST_RANDOM_MATCH: 'requestRandomMatch',
+  CREATE_SECRET_MATCH: 'createSecretMatch',
+  JOIN_SECRET_MATCH: 'joinSecretMatch',
   CANCEL_RANDOM_MATCH: 'cancelRandomMatch',
   APPROVE_RANDOM_MATCH: 'approveRandomMatch',
 };
@@ -23,6 +26,7 @@ const BASEBALL_EMIT_EVENTS = {
   MATCHED: 'matched',
   MATCH_APPROVED: 'matchApproved',
   MATCH_CANCELED: 'matchCancelled',
+  SECRET_MATCH_CREATED: 'secretMatchCreated',
   NO_USERS_AVAILABLE: 'noUsersAvailable',
   ERROR: 'error',
 };
@@ -40,6 +44,7 @@ export class BaseballGateway implements OnGatewayDisconnect {
   constructor(
     private readonly waitingUserService: WaitingUserService,
     private readonly baseballGameService: BaseballGameService,
+    private readonly secretCodeService: SecretCodeService,
   ) {}
 
   private getRandomNumberFromList(numbers: number[]): number {
@@ -66,7 +71,7 @@ export class BaseballGateway implements OnGatewayDisconnect {
       if (!waitingUser) {
         this.emitError({
           destinaton: socket,
-          message: 'You are not waiting for a match',
+          message: '매칭중이 아닙니다.',
           statusCode: 400,
         });
         return;
@@ -100,7 +105,7 @@ export class BaseballGateway implements OnGatewayDisconnect {
       this.logger.error(e);
       this.emitError({
         destinaton: socket,
-        message: 'Something went wrong',
+        message: '매칭 취소에 실패했습니다.',
         statusCode: 500,
       });
     }
@@ -110,7 +115,6 @@ export class BaseballGateway implements OnGatewayDisconnect {
   async handleApproveRandomMatch(@ConnectedSocket() socket: Socket) {
     try {
       this.logger.log('approveRandomMatch');
-      console.log(socket.id);
       const waitingUser = await this.waitingUserService.findWaitingUser({
         socketId: socket.id,
       });
@@ -147,19 +151,20 @@ export class BaseballGateway implements OnGatewayDisconnect {
       this.logger.error(e);
       this.emitError({
         destinaton: socket,
-        message: 'Something went wrong',
+        message: '매칭 수락에 실패했습니다.',
         statusCode: 500,
       });
     }
   }
 
   @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.REQUEST_RANDOM_MATCH)
-  async handleMessage(
+  async handleRequestRandomMatch(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { turnTimeLimit: number },
   ) {
     try {
       this.logger.log('requestRandomMatch');
+
       await this.waitingUserService.createWaitingUser({
         socketId: socket.id,
         turnTimeLimit: data.turnTimeLimit || 0,
@@ -174,6 +179,7 @@ export class BaseballGateway implements OnGatewayDisconnect {
           (user.turnTimeLimit === data.turnTimeLimit ||
             !data.turnTimeLimit ||
             !user.turnTimeLimit) &&
+          !user.secretCode &&
           socket.nsp.sockets.get(user.socketId),
       );
       if (validUsers.length > 0) {
@@ -210,7 +216,81 @@ export class BaseballGateway implements OnGatewayDisconnect {
       this.logger.error(e);
       this.emitError({
         destinaton: socket,
-        message: 'Something went wrong',
+        message: '랜덤 매칭 요청에 실패했습니다.',
+        statusCode: 500,
+      });
+    }
+  }
+
+  @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.CREATE_SECRET_MATCH)
+  async handleCreateSecretMatch(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { turnTimeLimit: number },
+  ) {
+    try {
+      this.logger.log('createSecretMatch');
+      const secretCode =
+        await this.secretCodeService.getAndDeleteRandomSecretCode();
+      await this.waitingUserService.createWaitingUser({
+        socketId: socket.id,
+        turnTimeLimit: data.turnTimeLimit || 0,
+        secretCode: secretCode.secretCode,
+      });
+      socket.emit(BASEBALL_EMIT_EVENTS.SECRET_MATCH_CREATED, {
+        secretCode: secretCode.secretCode,
+      });
+    } catch (e) {
+      this.logger.error(e);
+      this.emitError({
+        destinaton: socket,
+        message: '매칭 코드 생성에 실패했습니다.',
+        statusCode: 500,
+      });
+    }
+  }
+
+  @SubscribeMessage(BASEBALL_SUBSCRIBE_EVENTS.JOIN_SECRET_MATCH)
+  async handleJoinSecretMatch(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { secretCode: number },
+  ) {
+    try {
+      this.logger.log('joinSecretMatch');
+      if (typeof data.secretCode !== 'number') {
+        this.emitError({
+          destinaton: socket,
+          message: '잘못된 코드입니다.',
+          statusCode: 400,
+        });
+        return;
+      }
+      const waiting_user = await this.waitingUserService.findWaitingUser({
+        secretCode: data.secretCode,
+      });
+      const baseballGame = await this.baseballGameService.createBaseballGame();
+      socket.emit(BASEBALL_EMIT_EVENTS.MATCH_APPROVED, {
+        roomId: baseballGame.id,
+        turnTimeLimit: waiting_user.turnTimeLimit,
+      });
+      socket
+        .to(waiting_user.socketId)
+        .emit(BASEBALL_EMIT_EVENTS.MATCH_APPROVED, {
+          roomId: baseballGame.id,
+          turnTimeLimit: waiting_user.turnTimeLimit,
+        });
+      if (!waiting_user) {
+        this.emitError({
+          destinaton: socket,
+          message: '존재하지 않는 방입니다.',
+          statusCode: 404,
+        });
+        return;
+      }
+    } catch (e) {
+      this.logger.error(e);
+      this.emitError({
+        destinaton: socket,
+        message: '연결 중 오류가 발생했습니다.',
         statusCode: 500,
       });
     }

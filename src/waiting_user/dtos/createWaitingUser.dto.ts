@@ -7,4 +7,8 @@ export class CreateWaitingUserInput {
   @IsNumber()
   @IsOptional()
   turnTimeLimit?: number;
+
+  @IsNumber()
+  @IsOptional()
+  secretCode?: number;
 }

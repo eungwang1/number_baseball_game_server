@@ -1,4 +1,4 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class FindWaitingUserInput {
   @IsString()
@@ -8,4 +8,8 @@ export class FindWaitingUserInput {
   @IsString()
   @IsOptional()
   matchId?: string;
+
+  @IsNumber()
+  @IsOptional()
+  secretCode?: number;
 }

@@ -14,4 +14,7 @@ export class WaitingUser extends CoreEntity {
 
   @Column({ default: 0 })
   turnTimeLimit: number;
+
+  @Column({ default: null, nullable: true, unique: true })
+  secretCode: number;
 }
