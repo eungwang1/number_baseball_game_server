@@ -12,6 +12,7 @@ import { sample } from 'lodash';
 import { EmitErrorArgs } from './baseball_game.type';
 import { BaseballGame } from './entities/baseball_game.entity';
 import { Logger } from '@nestjs/common';
+import { UpdateBaseballGameInput } from './dtos/updateBaseballGame.dto';
 
 const BASEBALL_GAME_SUBSCRIBE_EVENTS = {
   SET_BALL_NUMBER: 'setBallNumber',
@@ -30,7 +31,7 @@ const BASEBALL_GAME_EMIT_EVENTS = {
 };
 
 @WebSocketGateway({
-  namespace: /\/baseball\/.*/,
+  namespace: /\/baseball\/[^\/]*$/,
 })
 export class BaseballGameGateway
   implements OnGatewayConnection, OnGatewayDisconnect
@@ -46,6 +47,7 @@ export class BaseballGameGateway
       this.emitError({
         destinaton: socket,
         message: '존재하지 않는 게임입니다.\n잠시 후 대기실로 이동합니다.',
+        redirectPath: '/',
         statusCode: 404,
       });
 
@@ -55,8 +57,12 @@ export class BaseballGameGateway
   }
 
   private emitError(args: EmitErrorArgs) {
-    const { destinaton, message, statusCode } = args;
-    destinaton.emit(BASEBALL_GAME_EMIT_EVENTS.ERROR, { message, statusCode });
+    const { destinaton, message, statusCode, redirectPath } = args;
+    destinaton.emit(BASEBALL_GAME_EMIT_EVENTS.ERROR, {
+      message,
+      statusCode,
+      redirectPath,
+    });
   }
 
   private emitOpponentDisconnect(socket: Socket, baseballGame: BaseballGame) {
@@ -64,7 +70,8 @@ export class BaseballGameGateway
     const opponentSocketId = isUser1 ? baseballGame.user2 : baseballGame.user1;
     this.emitError({
       destinaton: socket.to(opponentSocketId),
-      message: '상대방이 나갔습니다.\n잠시 후 대기실로 이동합니다.',
+      message: '상대방이 나갔습니다.\n부전승 처리됩니다.',
+      redirectPath: `/baseball/${baseballGame.id}/win`,
       statusCode: 404,
     });
   }
@@ -107,6 +114,7 @@ export class BaseballGameGateway
           this.emitError({
             destinaton: socket,
             message: '존재하지 않는 게임입니다.\n잠시 후 대기실로 이동합니다.',
+            redirectPath: '/',
             statusCode: 404,
           });
         }
@@ -121,6 +129,7 @@ export class BaseballGameGateway
           destinaton: socket,
           message: '인원이 초과되었습니다.\n잠시 후 대기실로 이동합니다.',
           statusCode: 403,
+          redirectPath: '/',
         });
       }
       socket.emit(BASEBALL_GAME_EMIT_EVENTS.CONNECTED);
@@ -130,6 +139,7 @@ export class BaseballGameGateway
         destinaton: socket,
         message: '알 수 없는 에러가 발생했습니다.',
         statusCode: 500,
+        redirectPath: '/',
       });
     }
   }
@@ -138,10 +148,7 @@ export class BaseballGameGateway
     try {
       this.logger.log('baseball game disconnect');
       const baseballGame = await this.getBaseballGame(socket);
-      if (!baseballGame) return;
-      this.baseballGameService.deleteBaseballGameBySocketId({
-        socketId: socket.id,
-      });
+      if (!baseballGame || baseballGame.game_finished) return;
       this.emitOpponentDisconnect(socket, baseballGame);
     } catch (e) {
       this.logger.error(e);
@@ -149,6 +156,7 @@ export class BaseballGameGateway
         destinaton: socket,
         message: '알 수 없는 에러가 발생했습니다.',
         statusCode: 500,
+        redirectPath: '/',
       });
     }
   }
@@ -185,6 +193,7 @@ export class BaseballGameGateway
           destinaton: socket,
           message:
             '게임에 참여중인 유저가 아닙니다.\n잠시 후 대기실로 이동합니다.',
+          redirectPath: '/',
           statusCode: 404,
         });
         return;
@@ -251,6 +260,7 @@ export class BaseballGameGateway
         destinaton: socket,
         message: '알 수 없는 에러가 발생했습니다.',
         statusCode: 500,
+        redirectPath: '/',
       });
     }
   }
@@ -280,6 +290,7 @@ export class BaseballGameGateway
           destinaton: socket,
           message:
             '게임에 참여중인 유저가 아닙니다.\n잠시 후 대기실로 이동합니다.',
+          redirectPath: '/',
           statusCode: 404,
         });
         return;
@@ -333,26 +344,45 @@ export class BaseballGameGateway
           ball,
           baseballNumber,
         });
+      const currentHistory = isUser1
+        ? 'user1_baseball_number_history'
+        : 'user2_baseball_number_history';
+
+      const updateBaseballGameInput: UpdateBaseballGameInput = {
+        id: baseballGame.id,
+        [currentHistory]: [
+          {
+            baseball_number: baseballNumber,
+            strike,
+            ball,
+          },
+          ...baseballGame[currentHistory],
+        ],
+      };
       if (strike === 4) {
         socket.emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: true });
         socket
           .to(opponentSocketId)
           .emit(BASEBALL_GAME_EMIT_EVENTS.GAME_END, { isWin: false });
+        updateBaseballGameInput.game_finished = true;
+        updateBaseballGameInput[isUser1 ? 'user1_win' : 'user2_win'] = true;
       } else {
         const turn = isUser1 ? baseballGame.user2 : baseballGame.user1;
-        await this.baseballGameService.updateBaseballGame({
-          id: baseballGame.id,
-          turn,
-        });
         socket.emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
         socket.to(turn).emit(BASEBALL_GAME_EMIT_EVENTS.CHANGE_TURN, { turn });
+        updateBaseballGameInput.turn = turn;
       }
+
+      await this.baseballGameService.updateBaseballGame(
+        updateBaseballGameInput,
+      );
     } catch (e) {
       this.logger.error(e);
       this.emitError({
         destinaton: socket,
         message: '알 수 없는 에러가 발생했습니다.',
         statusCode: 500,
+        redirectPath: '/',
       });
     }
   }

@@ -1,4 +1,11 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { BaseballNumberHistory } from '../entities/baseball_game.entity';
 
 export class UpdateBaseballGameInput {
   @IsString()
@@ -27,4 +34,26 @@ export class UpdateBaseballGameInput {
   @IsString()
   @IsOptional()
   turn?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  game_finished?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  user1_win?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  user2_win?: boolean;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => BaseballNumberHistory)
+  user1_baseball_number_history?: BaseballNumberHistory[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => BaseballNumberHistory)
+  user2_baseball_number_history?: BaseballNumberHistory[];
 }
