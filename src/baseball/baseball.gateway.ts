@@ -231,6 +231,9 @@ export class BaseballGateway implements OnGatewayDisconnect {
       this.logger.log('createSecretMatch');
       const secretCode =
         await this.secretCodeService.getAndDeleteRandomSecretCode();
+      if (!secretCode) {
+        await this.secretCodeService.fillUniqueSecretCodes();
+      }
       await this.waitingUserService.createWaitingUser({
         socketId: socket.id,
         turnTimeLimit: data.turnTimeLimit || 0,
@@ -260,13 +263,21 @@ export class BaseballGateway implements OnGatewayDisconnect {
         this.emitError({
           destinaton: socket,
           message: '잘못된 코드입니다.',
-          statusCode: 400,
+          statusCode: 404,
         });
         return;
       }
       const waiting_user = await this.waitingUserService.findWaitingUser({
         secretCode: data.secretCode,
       });
+      if (!waiting_user) {
+        this.emitError({
+          destinaton: socket,
+          message: '잘못된 코드입니다.',
+          statusCode: 404,
+        });
+        return;
+      }
       const baseballGame = await this.baseballGameService.createBaseballGame();
       socket.emit(BASEBALL_EMIT_EVENTS.MATCH_APPROVED, {
         roomId: baseballGame.id,
